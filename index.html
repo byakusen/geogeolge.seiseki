@@ -207,9 +207,9 @@
 
         /* 横幅調整 */
         .col-id { width: 3px; }
-        .col-a { width: 40px; } 
-        .col-b { width: 120px; }
-        .col-score { width: 45px; }
+        .col-a { width: 20px; } 
+        .col-b { width: 40px; }
+        .col-score { width: 34px; }
 
         input {
             width: 100%;
@@ -492,8 +492,8 @@
         @media (max-width: 600px) {
             .app-container { width: 98%; padding: 10px; }
             .header h1 { font-size: 1.2rem; }
-            .col-b { width: 80px; }
-            .col-score { width: 40px; }
+            .col-b { width: 40px; }
+            .col-score { width: 34px; }
         }
     </style>
 </head>
@@ -502,6 +502,7 @@
 <div class="app-container">
     <div class="tabs">
         <button class="tab-btn" onclick="switchTab('settings')">設定</button>
+        <button class="tab-btn" onclick="switchTab('kiroku')">記録</button>
         <button class="tab-btn active" onclick="switchTab('entry')">テスト入力</button>
         <button class="tab-btn" onclick="switchTab('criteria')">基準</button>
         <button class="tab-btn" onclick="switchTab('record')">学習の記録</button>
@@ -547,6 +548,33 @@
             <div class="form-group" style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px; align-items: flex-start;">
                 <button class="btn btn-reset" style="width: 200px; justify-content: center;" onclick="resetApp()">🔄 リセット</button>
             </div>
+        </div>
+    </div>
+
+    <div id="tab-kiroku" class="tab-content">
+        <div class="header">
+            <h1>記録シート</h1>
+            <div class="toolbar">
+                <span style="font-size: 0.85rem; color: #636e72;">※ ここは記録専用です。成績には反映されません。</span>
+            </div>
+        </div>
+
+        <div class="table-controls">
+            <button id="kirokuPrevBtn" class="nav-btn" onclick="kirokuMoveColumns(-1)">←</button>
+            <span id="kirokuColRangeInfo" style="font-weight: bold; color: var(--primary-color);"></span>
+            <select id="kirokuTermSelector" class="term-select">
+                <option>1学期</option>
+                <option>2学期</option>
+                <option>3学期</option>
+            </select>
+            <button id="kirokuNextBtn" class="nav-btn" onclick="kirokuMoveColumns(1)">→</button>
+        </div>
+
+        <div class="table-wrapper">
+            <table id="kirokuTable">
+                <thead><tr id="kirokuHeaderRow" class="header-row"></tr></thead>
+                <tbody id="kirokuTableBody"></tbody>
+            </table>
         </div>
     </div>
 
@@ -750,7 +778,7 @@
     const rowCount = studentCount + headerRowsCount + 2; 
     
     let startColIdx = 2; 
-    const visibleColsCount = 6; 
+    const visibleColsCount = 8; 
     const totalCols = 200; 
 
     let isSelecting = false;
@@ -781,38 +809,29 @@
 
     function switchTab(tabName) {
         document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        // タブボタンの並び順に依存しないよう onclick で一致するボタンを active にする
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('onclick') === `switchTab('${tabName}')`);
+        });
+        const content = document.getElementById('tab-' + tabName);
+        if (content) content.classList.add('active');
         if (tabName === 'settings') {
-            document.getElementById('tab-settings').classList.add('active');
-            document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
             renderSubjectSettings();
+        } else if (tabName === 'kiroku') {
+            renderKirokuTable();
         } else if (tabName === 'entry') {
-            document.getElementById('tab-entry').classList.add('active');
-            document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
             renderTable(); 
         } else if (tabName === 'criteria') {
-            document.getElementById('tab-criteria').classList.add('active');
-            document.querySelector('.tab-btn:nth-child(3)').classList.add('active');
             renderCriteriaTable();
         } else if (tabName === 'record') {
-            document.getElementById('tab-record').classList.add('active');
-            document.querySelector('.tab-btn:nth-child(4)').classList.add('active');
             renderRecordTable();
         } else if (tabName === 'yoroku') {
-            document.getElementById('tab-yoroku').classList.add('active');
-            document.querySelector('.tab-btn:nth-child(5)').classList.add('active');
             renderYorokuTable(); 
         } else if (tabName === 'yoroku_activity') {
-            document.getElementById('tab-yoroku_activity').classList.add('active');
-            document.querySelector('.tab-btn:nth-child(6)').classList.add('active');
             renderYorokuActivityTable();
         } else if (tabName === 'behavior') {
-            document.getElementById('tab-behavior').classList.add('active');
-            document.querySelector('.tab-btn:nth-child(7)').classList.add('active');
             renderBehaviorTable(); 
         } else if (tabName === 'shoken') {
-            document.getElementById('tab-shoken').classList.add('active');
-            document.querySelector('.tab-btn:nth-child(8)').classList.add('active');
             renderShokenTabs();
         }
     }
@@ -1079,12 +1098,23 @@
                             }
                             // タイムスタンプが片方欠けている場合のみユーザーに確認
                             else {
-                                const useLocal = confirm(
-                                    "ログイン先のアカウントに既存のデータがあります。\n\n" +
-                                    "【OK】→ 今まで入力していたデータを引き継ぐ（アカウントの既存データは上書きされます）\n" +
-                                    "【キャンセル】→ アカウントに保存されているデータを使う（今まで入力していたデータは破棄されます）"
+                                const loadCloud = confirm(
+                                    "クラウドに保存されたデータがあります。\n\n" +
+                                    "OK・・・クラウドにあるデータが読み込まれます。\n" +
+                                    "（今、パソコンに映っているデータは消えます。）\n\n" +
+                                    "キャンセル・・・パソコンに映っている画面・データが、クラウド上のデータを上書きします。"
                                 );
-                                if (useLocal) {
+                                if (loadCloud) {
+                                    // OK → クラウドのデータを読み込む（画面のデータは消える）
+                                    cellDataStorage = data.cellDataStorage || {};
+                                    manualEditFlags = data.manualEditFlags || {};
+                                    criteriaSettings = data.criteriaSettings || criteriaSettings;
+                                    startColIdx = data.startColIdx || 2;
+                                    termSelector.value = data.term || "1学期";
+                                    gradeSelector.value = data.grade || "1";
+                                    subjectSettings = data.subjectSettings || subjectSettings;
+                                } else {
+                                    // キャンセル → 画面のデータでクラウドを上書きする
                                     cellDataStorage = prevData.cellDataStorage;
                                     manualEditFlags = prevData.manualEditFlags || {};
                                     criteriaSettings = prevData.criteriaSettings;
@@ -1093,14 +1123,6 @@
                                     termSelector.value = prevData.term;
                                     gradeSelector.value = prevData.grade;
                                     autoSave();
-                                } else {
-                                    cellDataStorage = data.cellDataStorage || {};
-                                    manualEditFlags = data.manualEditFlags || {};
-                                    criteriaSettings = data.criteriaSettings || criteriaSettings;
-                                    startColIdx = data.startColIdx || 2;
-                                    termSelector.value = data.term || "1学期";
-                                    gradeSelector.value = data.grade || "1";
-                                    subjectSettings = data.subjectSettings || subjectSettings;
                                 }
                             }
                         } else if (hadPrevData && !serverHasData) {
@@ -1163,6 +1185,8 @@
                         gradeSelector.value = data.grade || "1";
                         subjectSettings = data.subjectSettings || subjectSettings;
                         renderSubjectSettings(); renderTable(); renderShokenTabs();
+                        const kt = document.getElementById('tab-kiroku');
+                        if (kt && kt.classList.contains('active')) renderKirokuTable();
                     }
                 }
             });
@@ -2816,6 +2840,146 @@
         if(info) info.textContent = `${sN}〜${eN}列を表示中`;
     }
 
+    /* ===== 記録タブ（記録専用・成績には反映しない / 赤線なし・分類なし） ===== */
+    let kirokuStartColIdx = 2;
+
+    function kirokuCurrentTerm() {
+        const sel = document.getElementById('kirokuTermSelector');
+        return sel ? sel.value : "1学期";
+    }
+
+    function kirokuUpdateAverages() {
+        const term = kirokuCurrentTerm();
+        document.querySelectorAll('#kirokuTableBody .kiroku-avg').forEach(inp => {
+            const cn = inp.dataset.col;
+            let sum = 0, cnt = 0;
+            for (let n = 1; n <= studentCount; n++) {
+                const v = parseFloat(cellDataStorage[`kiroku_${term}_${n}-${cn}`]);
+                if (!isNaN(v)) { sum += v; cnt++; }
+            }
+            inp.value = cnt > 0 ? (sum / cnt).toFixed(1) : "";
+        });
+    }
+
+    function kirokuUpdateNavUI() {
+        const prevBtn = document.getElementById('kirokuPrevBtn');
+        const nextBtn = document.getElementById('kirokuNextBtn');
+        if (prevBtn) prevBtn.disabled = (kirokuStartColIdx <= 2);
+        if (nextBtn) nextBtn.disabled = (kirokuStartColIdx + visibleColsCount >= totalCols);
+        const sN = getColName(kirokuStartColIdx);
+        const eN = getColName(kirokuStartColIdx + visibleColsCount - 1);
+        const info = document.getElementById('kirokuColRangeInfo');
+        if (info) info.textContent = `${sN}〜${eN}列を表示中`;
+    }
+
+    function kirokuMoveColumns(dir) {
+        const next = kirokuStartColIdx + dir;
+        if (next >= 2 && next + visibleColsCount <= totalCols) {
+            kirokuStartColIdx = next;
+            renderKirokuTable();
+        }
+    }
+
+    function renderKirokuTable() {
+        const term = kirokuCurrentTerm();
+        const header = document.getElementById('kirokuHeaderRow');
+        const body = document.getElementById('kirokuTableBody');
+        if (!header || !body) return;
+
+        // 表示中の列名を求める
+        const colNames = [];
+        for (let i = 0; i < visibleColsCount; i++) colNames.push(getColName(kirokuStartColIdx + i));
+
+        // ヘッダー（No / 名前 / 列名）※縦の赤線なし
+        header.innerHTML = '';
+        const thNo = document.createElement('th'); thNo.className = 'col-a'; thNo.textContent = 'No';
+        const thName = document.createElement('th'); thName.className = 'col-b'; thName.textContent = '名前';
+        header.appendChild(thNo); header.appendChild(thName);
+        colNames.forEach(cn => {
+            const th = document.createElement('th'); th.className = 'col-score'; th.textContent = cn;
+            header.appendChild(th);
+        });
+
+        body.innerHTML = '';
+
+        // 入力セル生成（krow: 'title' / 'haiten' / 児童番号）
+        const makeCell = (krow, colName, opts) => {
+            opts = opts || {};
+            const td = document.createElement('td'); td.className = 'col-score';
+            if (opts.top != null) {
+                td.style.position = 'sticky'; td.style.top = opts.top + 'px';
+                td.style.zIndex = '8'; td.style.backgroundColor = 'white';
+            }
+            const inp = document.createElement('input');
+            inp.type = 'text'; inp.className = 'kiroku-cell';
+            inp.dataset.krow = krow; inp.dataset.col = colName;
+            inp.value = cellDataStorage[`kiroku_${term}_${krow}-${colName}`] || '';
+            if (opts.bold) inp.style.fontWeight = 'bold';
+            if (opts.color) inp.style.color = opts.color;
+            if (opts.fontSize) inp.style.fontSize = opts.fontSize;
+            inp.addEventListener('input', () => {
+                const key = `kiroku_${term}_${krow}-${colName}`;
+                if (inp.value === '') delete cellDataStorage[key]; else cellDataStorage[key] = inp.value;
+                if (krow !== 'title' && krow !== 'haiten') kirokuUpdateAverages();
+                autoSave();
+            });
+            td.appendChild(inp);
+            return td;
+        };
+
+        // 左の見出しセル（No+名前ぶんをまとめる）
+        const makeLabel = (text, top, color) => {
+            const td = document.createElement('td'); td.colSpan = 2;
+            td.textContent = text; td.style.fontWeight = 'bold'; td.style.background = '#f1f2f6';
+            if (color) td.style.color = color;
+            if (top != null) { td.style.position = 'sticky'; td.style.top = top + 'px'; td.style.zIndex = '8'; }
+            return td;
+        };
+
+        // タイトル行（スクロール時もヘッダー直下に固定）
+        const trTitle = document.createElement('tr');
+        trTitle.appendChild(makeLabel('タイトル', 40, 'var(--primary-color)'));
+        colNames.forEach(cn => trTitle.appendChild(makeCell('title', cn, { top: 40, bold: true, color: 'var(--primary-color)', fontSize: '1.1rem' })));
+        body.appendChild(trTitle);
+
+        // 配点設定行
+        const trHaiten = document.createElement('tr');
+        trHaiten.appendChild(makeLabel('配点設定', 80, '#b71c1c'));
+        colNames.forEach(cn => trHaiten.appendChild(makeCell('haiten', cn, { top: 80, color: '#b71c1c' })));
+        body.appendChild(trHaiten);
+
+        // 児童行
+        for (let n = 1; n <= studentCount; n++) {
+            const tr = document.createElement('tr');
+            if (n % 5 === 0) tr.style.borderBottom = '2px solid #b2bec3';
+            const tdNo = document.createElement('td'); tdNo.className = 'col-a'; tdNo.textContent = n;
+            const tdName = document.createElement('td'); tdName.className = 'col-b';
+            const nameInp = document.createElement('input');
+            nameInp.type = 'text'; nameInp.className = 'cell-name'; nameInp.readOnly = true;
+            nameInp.value = cellDataStorage[`${n + headerRowsCount}-B`] || '';
+            tdName.appendChild(nameInp);
+            tr.appendChild(tdNo); tr.appendChild(tdName);
+            colNames.forEach(cn => tr.appendChild(makeCell(String(n), cn)));
+            body.appendChild(tr);
+        }
+
+        // 平均点行（自動計算・編集不可）
+        const trAvg = document.createElement('tr');
+        trAvg.appendChild(makeLabel('平均点', null, 'blue'));
+        colNames.forEach(cn => {
+            const td = document.createElement('td'); td.className = 'col-score';
+            const inp = document.createElement('input');
+            inp.type = 'text'; inp.className = 'kiroku-avg'; inp.readOnly = true;
+            inp.dataset.col = cn; inp.style.color = 'blue'; inp.style.fontWeight = 'bold';
+            td.appendChild(inp);
+            trAvg.appendChild(td);
+        });
+        body.appendChild(trAvg);
+
+        kirokuUpdateAverages();
+        kirokuUpdateNavUI();
+    }
+
     function attachEventListeners() {
         const inputs = document.querySelectorAll('.input-cell');
         inputs.forEach(input => {
@@ -2923,6 +3087,11 @@
             }
         });
     }
+    const kirokuTermSelector = document.getElementById('kirokuTermSelector');
+    if (kirokuTermSelector) {
+        // 記録タブの学期切替は独立（他タブの学期には影響しない）
+        kirokuTermSelector.addEventListener('change', () => { renderKirokuTable(); });
+    }
     gradeSelector.addEventListener('change', () => { renderSubjectSettings(); renderTable(); renderShokenTabs(); autoSave(); });
 
     function copyTableData() {
@@ -3004,6 +3173,7 @@
 
     window.copyTableData = copyTableData; window.resetApp = resetApp; window.moveColumns = moveColumns;
     window.switchTab = switchTab; window.toggleAuthModal = toggleAuthModal;
+    window.kirokuMoveColumns = kirokuMoveColumns;
     window.handleEmailLogin = handleEmailLogin; window.handleEmailRegister = handleEmailRegister;
     window.handlePasswordReset = handlePasswordReset; window.toggleBGrades = toggleBGrades;
     window.toggleYorokuGrades = toggleYorokuGrades;
