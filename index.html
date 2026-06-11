@@ -410,6 +410,8 @@
         .record-corner {
             z-index: 25 !important;
         }
+        /* 学習の記録・要録・行動・所見タブの名前列は従来幅に戻す（テスト入力／記録／基準は40pxのまま） */
+        .col-b.record-sticky-left2 { width: 120px; }
 
         #authModal {
             display: none;
@@ -2880,6 +2882,21 @@
         }
     }
 
+    // 記録タブ：矢印キー移動時に選択セルを固定ヘッダー(列名40＋タイトル40＋配点設定40＝120px)の
+    // 下に隠さず、見える範囲へ最小限スクロール
+    function ensureKirokuCellVisible(cell) {
+        const wrapper = document.querySelector('#tab-kiroku .table-wrapper');
+        if (!wrapper || !cell) return;
+        const td = cell.closest('td') || cell;
+        const stickyTop = 120;
+        const wrapRect = wrapper.getBoundingClientRect();
+        const cellRect = td.getBoundingClientRect();
+        const cellTop = cellRect.top - wrapRect.top;
+        const cellBottom = cellRect.bottom - wrapRect.top;
+        if (cellTop < stickyTop) wrapper.scrollTop -= (stickyTop - cellTop);
+        else if (cellBottom > wrapper.clientHeight) wrapper.scrollTop += (cellBottom - wrapper.clientHeight);
+    }
+
     function renderKirokuTable() {
         const term = kirokuCurrentTerm();
         const header = document.getElementById('kirokuHeaderRow');
@@ -2920,8 +2937,58 @@
             inp.addEventListener('input', () => {
                 const key = `kiroku_${term}_${krow}-${colName}`;
                 if (inp.value === '') delete cellDataStorage[key]; else cellDataStorage[key] = inp.value;
-                if (krow !== 'title' && krow !== 'haiten') kirokuUpdateAverages();
+                if (krow === 'haiten') {
+                    // 配点に入れた得点を、名前が入っている児童セルへ自動反映（手入力済みのセルは変更しない）
+                    const v = inp.value;
+                    for (let n = 1; n <= studentCount; n++) {
+                        if (((cellDataStorage[`${n + headerRowsCount}-B`]) || '').trim() === '') continue;
+                        const sk = `kiroku_${term}_${n}-${colName}`;
+                        if (manualEditFlags[sk]) continue;
+                        if (v === '') delete cellDataStorage[sk]; else cellDataStorage[sk] = v;
+                        const sInp = document.querySelector(`#kirokuTableBody .kiroku-cell[data-krow="${n}"][data-col="${colName}"]`);
+                        if (sInp) sInp.value = v;
+                    }
+                    kirokuUpdateAverages();
+                } else if (krow !== 'title') {
+                    // 児童セルの手入力を記録（配点の自動反映で上書きされないようにする）
+                    manualEditFlags[key] = true;
+                    kirokuUpdateAverages();
+                }
                 autoSave();
+            });
+            inp.addEventListener('keydown', (e) => {
+                // 縦の移動順：タイトル → 配点設定 → 児童1〜40
+                const order = ['title', 'haiten'];
+                for (let n = 1; n <= studentCount; n++) order.push(String(n));
+                const ri = order.indexOf(krow);
+                let targetRow = krow, targetCol = colName;
+                let handled = true;
+                if (e.key === 'Enter' || e.key === 'ArrowDown') { if (ri < order.length - 1) targetRow = order[ri + 1]; }
+                else if (e.key === 'ArrowUp') { if (ri > 0) targetRow = order[ri - 1]; }
+                else if (e.key === 'ArrowRight') {
+                    const idx = getColIndex(colName);
+                    if (idx + 1 < totalCols) {
+                        if (idx + 1 >= kirokuStartColIdx + visibleColsCount) kirokuMoveColumns(1);
+                        targetCol = getColName(idx + 1);
+                    }
+                }
+                else if (e.key === 'ArrowLeft') {
+                    const idx = getColIndex(colName);
+                    if (idx > 2) {
+                        if (idx === kirokuStartColIdx && kirokuStartColIdx > 2) kirokuMoveColumns(-1);
+                        targetCol = getColName(idx - 1);
+                    } else handled = false;
+                }
+                else handled = false;
+                if (!handled) return;
+                e.preventDefault();
+                if (targetRow === krow && targetCol === colName) return;
+                const t = document.querySelector(`#kirokuTableBody .kiroku-cell[data-krow="${targetRow}"][data-col="${targetCol}"]`);
+                if (t) {
+                    t.focus({ preventScroll: true });
+                    if (t.select) t.select();
+                    if (targetRow !== 'title' && targetRow !== 'haiten') ensureKirokuCellVisible(t);
+                }
             });
             td.appendChild(inp);
             return td;
@@ -2980,6 +3047,24 @@
         kirokuUpdateNavUI();
     }
 
+    // 矢印キー移動時、選択セルが固定ヘッダー（列名40＋分類40＋タイトル40＝120px）の
+    // 下に隠れたり中央へワープしたりしないよう、最小限だけスクロールして常に見える位置に保つ
+    function ensureEntryCellVisible(cell) {
+        const wrapper = document.querySelector('#tab-entry .table-wrapper');
+        if (!wrapper || !cell) return;
+        const td = cell.closest('td') || cell;
+        const stickyTop = 120; // 列名行(40)＋分類行(40)＋タイトル行(40)
+        const wrapRect = wrapper.getBoundingClientRect();
+        const cellRect = td.getBoundingClientRect();
+        const cellTop = cellRect.top - wrapRect.top;
+        const cellBottom = cellRect.bottom - wrapRect.top;
+        if (cellTop < stickyTop) {
+            wrapper.scrollTop -= (stickyTop - cellTop);
+        } else if (cellBottom > wrapper.clientHeight) {
+            wrapper.scrollTop += (cellBottom - wrapper.clientHeight);
+        }
+    }
+
     function attachEventListeners() {
         const inputs = document.querySelectorAll('.input-cell');
         inputs.forEach(input => {
@@ -3015,7 +3100,7 @@
                 else if (e.key === 'ArrowLeft') { e.preventDefault(); if (c === 'B') nc = 'A'; else if (c !== 'A' && c !== 'AB') { const idx = getColIndex(c); if (idx === startColIdx) { if (startColIdx > 2) { moveColumns(-1); nc = getColName(idx - 1); } else nc = 'B'; } else nc = getColName(idx - 1); } }
                 if (nr !== r || nc !== c) {
                     const s = nc === 'AB' ? `.input-cell[data-row="${nr}"][data-col=\"AB\"]` : `.input-cell[data-row="${nr}"][data-col="${nc}"]`;
-                    const n = document.querySelector(s); if (n) { n.focus(); if (n.select) n.select(); } else if (nr > rowCount) showSuccess();
+                    const n = document.querySelector(s); if (n) { n.focus({ preventScroll: true }); if (n.select) n.select(); if (nr > 2) ensureEntryCellVisible(n); } else if (nr > rowCount) showSuccess();
                 }
             });
             input.addEventListener('mousedown', (e) => {
