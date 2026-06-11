@@ -1537,7 +1537,7 @@
                 else if (e.key === 'ArrowLeft') { e.preventDefault(); nc--; }
                 if (nr !== r || nc !== c) {
                     const n = document.querySelector(`.select-cell[data-student="${nr}"][data-colidx="${nc}"]`);
-                    if (n) { n.focus(); if (n.select) n.select(); } else if ((e.key === 'Enter' || e.key === 'ArrowDown') && nr > studentCount + headerRowsCount) showSuccess();
+                    if (n) { n.focus({ preventScroll: true }); if (n.select) n.select(); scrollIntoViewWithin(n); } else if ((e.key === 'Enter' || e.key === 'ArrowDown') && nr > studentCount + headerRowsCount) showSuccess();
                 }
             });
             inp.addEventListener('mousedown', (e) => {
@@ -1589,8 +1589,9 @@
             setTimeout(() => {
                 const newActiveEl = document.querySelector(`.select-cell[data-student="${activeStudent}"][data-colidx="${activeColIdx}"]`);
                 if (newActiveEl) {
-                    newActiveEl.focus();
+                    newActiveEl.focus({ preventScroll: true });
                     if (newActiveEl.select) newActiveEl.select();
+                    scrollIntoViewWithin(newActiveEl);
                 }
             }, 10);
         }
@@ -1835,7 +1836,7 @@
                 else if (e.key === 'ArrowLeft') { e.preventDefault(); nc--; }
                 if (nr !== r || nc !== c) {
                     const n = document.querySelector(`.yoroku-cell[data-student="${nr}"][data-colidx="${nc}"]`);
-                    if (n) { n.focus(); if (n.select) n.select(); } else if ((e.key === 'Enter' || e.key === 'ArrowDown') && nr > studentCount + headerRowsCount) showSuccess();
+                    if (n) { n.focus({ preventScroll: true }); if (n.select) n.select(); scrollIntoViewWithin(n); } else if ((e.key === 'Enter' || e.key === 'ArrowDown') && nr > studentCount + headerRowsCount) showSuccess();
                 }
             });
             inp.addEventListener('mousedown', (e) => {
@@ -1886,8 +1887,9 @@
             setTimeout(() => {
                 const newActiveEl = document.querySelector(`.yoroku-cell[data-student="${activeStudent}"][data-colidx="${activeColIdx}"]`);
                 if (newActiveEl) {
-                    newActiveEl.focus();
+                    newActiveEl.focus({ preventScroll: true });
                     if (newActiveEl.select) newActiveEl.select();
+                    scrollIntoViewWithin(newActiveEl);
                 }
             }, 10);
         }
@@ -2019,7 +2021,7 @@
                 else if (e.key === 'ArrowLeft') { e.preventDefault(); nc--; }
                 if (nr !== r || nc !== c) {
                     const n = document.querySelector(`.yoroku-activity-cell[data-student="${nr}"][data-colidx="${nc}"]`);
-                    if (n) { n.focus(); if (n.select) n.select(); } else if ((e.key === 'Enter' || e.key === 'ArrowDown') && nr > studentCount + headerRowsCount) showSuccess();
+                    if (n) { n.focus({ preventScroll: true }); if (n.select) n.select(); scrollIntoViewWithin(n); } else if ((e.key === 'Enter' || e.key === 'ArrowDown') && nr > studentCount + headerRowsCount) showSuccess();
                 }
             });
             inp.addEventListener('mousedown', (e) => {
@@ -2067,8 +2069,9 @@
             setTimeout(() => {
                 const newActiveEl = document.querySelector(`.yoroku-activity-cell[data-student="${activeStudent}"][data-colidx="${activeColIdx}"]`);
                 if (newActiveEl) {
-                    newActiveEl.focus();
+                    newActiveEl.focus({ preventScroll: true });
                     if (newActiveEl.select) newActiveEl.select();
+                    scrollIntoViewWithin(newActiveEl);
                 }
             }, 10);
         }
@@ -2177,7 +2180,7 @@
                 else if (e.key === 'ArrowLeft') { e.preventDefault(); nc--; }
                 if (nr !== r || nc !== c) {
                     const n = document.querySelector(`.behavior-cell[data-student="${nr}"][data-colidx="${nc}"]`);
-                    if (n) { n.focus(); if (n.select) n.select(); } else if ((e.key === 'Enter' || e.key === 'ArrowDown') && nr > studentCount + headerRowsCount) showSuccess();
+                    if (n) { n.focus({ preventScroll: true }); if (n.select) n.select(); scrollIntoViewWithin(n); } else if ((e.key === 'Enter' || e.key === 'ArrowDown') && nr > studentCount + headerRowsCount) showSuccess();
                 }
             });
             inp.addEventListener('mousedown', (e) => {
@@ -2225,8 +2228,9 @@
             setTimeout(() => {
                 const newActiveEl = document.querySelector(`.behavior-cell[data-student="${activeStudent}"][data-colidx="${activeColIdx}"]`);
                 if (newActiveEl) {
-                    newActiveEl.focus();
+                    newActiveEl.focus({ preventScroll: true });
                     if (newActiveEl.select) newActiveEl.select();
+                    scrollIntoViewWithin(newActiveEl);
                 }
             }, 10);
         }
@@ -2385,7 +2389,7 @@
                 else if (e.key === 'ArrowLeft') { e.preventDefault(); nc--; }
                 if (nr !== r || nc !== c) {
                     const n = document.querySelector(`.toku-cell[data-student="${nr}"][data-colidx="${nc}"]`);
-                    if (n) { n.focus(); if (n.select) n.select(); } else if ((e.key === 'Enter' || e.key === 'ArrowDown') && nr > studentCount + headerRowsCount) showSuccess();
+                    if (n) { n.focus({ preventScroll: true }); if (n.select) n.select(); scrollIntoViewWithin(n); } else if ((e.key === 'Enter' || e.key === 'ArrowDown') && nr > studentCount + headerRowsCount) showSuccess();
                 }
             });
             inp.addEventListener('mousedown', (e) => {
@@ -2527,7 +2531,8 @@
                 if (nr !== r) {
                     const n = document.querySelector(`.shoken-cell[data-student="${nr}"]`);
                     if (n) {
-                        n.focus();
+                        n.focus({ preventScroll: true });
+                        scrollIntoViewWithin(n);
                     } else if (e.key === 'Enter') {
                         if (nr > studentCount + headerRowsCount) showSuccess();
                     }
@@ -3068,6 +3073,38 @@
         } else if (cellBottom > wrapper.clientHeight) {
             wrapper.scrollTop += (cellBottom - wrapper.clientHeight);
         }
+    }
+
+    // 学習の記録・要録・行動の記録・所見など、固定ヘッダー＋固定列（No・名前）を持つ表の共通版。
+    // 固定部分の高さ・幅をその場で実測し、選択セルがその下に隠れたりワープしたりしないよう最小スクロールする。
+    function scrollIntoViewWithin(cell) {
+        if (!cell) return;
+        const td = cell.closest('td') || cell;
+        const wrapper = td.closest('.table-wrapper');
+        const table = td.closest('table');
+        if (!wrapper || !table) return;
+        const wrapRect = wrapper.getBoundingClientRect();
+
+        // 上に固定されているヘッダーの最下端（2行ヘッダーなら record-sticky-top2 を優先）
+        let stickyTop = 0;
+        const topEl = table.querySelector('.record-sticky-top2') || table.querySelector('.record-sticky-top');
+        if (topEl) stickyTop = topEl.getBoundingClientRect().bottom - wrapRect.top;
+
+        // 左に固定されている列の最右端（No＋名前）
+        let stickyLeft = 0;
+        const leftEl = table.querySelector('.record-sticky-left2') || table.querySelector('.record-sticky-left');
+        if (leftEl) stickyLeft = leftEl.getBoundingClientRect().right - wrapRect.left;
+
+        const cellRect = td.getBoundingClientRect();
+        const top = cellRect.top - wrapRect.top;
+        const bottom = cellRect.bottom - wrapRect.top;
+        const left = cellRect.left - wrapRect.left;
+        const right = cellRect.right - wrapRect.left;
+
+        if (top < stickyTop) wrapper.scrollTop -= (stickyTop - top);
+        else if (bottom > wrapper.clientHeight) wrapper.scrollTop += (bottom - wrapper.clientHeight);
+        if (left < stickyLeft) wrapper.scrollLeft -= (stickyLeft - left);
+        else if (right > wrapper.clientWidth) wrapper.scrollLeft += (right - wrapper.clientWidth);
     }
 
     function attachEventListeners() {
