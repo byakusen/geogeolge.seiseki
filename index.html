@@ -403,7 +403,7 @@
         }
         .record-sticky-left2 {
             position: sticky;
-            left: 40px; /* No列の幅 */
+            left: 20px; /* No列の幅(col-a=20px)に合わせる */
             background: #f1f2f6;
             z-index: 18;
         }
@@ -2936,17 +2936,22 @@
             if (opts.fontSize) inp.style.fontSize = opts.fontSize;
             inp.addEventListener('input', () => {
                 const key = `kiroku_${term}_${krow}-${colName}`;
+                const oldV = cellDataStorage[key] || ''; // 直前の値（配点の自動反映判定に使う）
                 if (inp.value === '') delete cellDataStorage[key]; else cellDataStorage[key] = inp.value;
                 if (krow === 'haiten') {
-                    // 配点に入れた得点を、名前が入っている児童セルへ自動反映（手入力済みのセルは変更しない）
-                    const v = inp.value;
+                    // 配点の得点を、名前が入っている児童セルへ自動反映。
+                    // ただし「空欄」または「直前の配点と同じ値（＝自動で入った値）」のセルだけを更新し、
+                    // 手入力された値は変更しない（保存・同期のタイミングに左右されないようにする）。
+                    const newV = inp.value;
                     for (let n = 1; n <= studentCount; n++) {
                         if (((cellDataStorage[`${n + headerRowsCount}-B`]) || '').trim() === '') continue;
                         const sk = `kiroku_${term}_${n}-${colName}`;
                         if (manualEditFlags[sk]) continue;
-                        if (v === '') delete cellDataStorage[sk]; else cellDataStorage[sk] = v;
+                        const cur = cellDataStorage[sk] || '';
+                        if (cur !== '' && cur !== oldV) continue; // 手入力済みのセルは保護
+                        if (newV === '') delete cellDataStorage[sk]; else cellDataStorage[sk] = newV;
                         const sInp = document.querySelector(`#kirokuTableBody .kiroku-cell[data-krow="${n}"][data-col="${colName}"]`);
-                        if (sInp) sInp.value = v;
+                        if (sInp) sInp.value = newV;
                     }
                     kirokuUpdateAverages();
                 } else if (krow !== 'title') {
