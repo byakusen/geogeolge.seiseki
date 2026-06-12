@@ -797,6 +797,8 @@
     };
     let lastUser = null;
     let isLocalUpdate = false;
+    // この端末・このセッションを識別するID（自分の書き込みのエコーを確実に無視するため）
+    const clientId = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
     let unsubscribeSnapshot = null;
     let justLoggedOut = false;  // ログアウト直後フラグ：autoSaveを一時停止する
     let saveDisabled = false;   // 保存を無効化するフラグ
@@ -934,7 +936,7 @@
         saveTimeout = setTimeout(async () => {
             try {
                 const stateRef = doc(db, 'artifacts', appId, 'users', lastUser.uid);
-                await setDoc(stateRef, { cellDataStorage, manualEditFlags, criteriaSettings, startColIdx, term: termSelector.value, grade: gradeSelector.value, subjectSettings, updatedAt: new Date() });
+                await setDoc(stateRef, { cellDataStorage, manualEditFlags, criteriaSettings, startColIdx, term: termSelector.value, grade: gradeSelector.value, subjectSettings, updatedAt: new Date(), lastWriterId: clientId });
                 setTimeout(() => { isLocalUpdate = false; }, 500);
             } catch (err) { isLocalUpdate = false; }
         }, 1000);
@@ -1173,8 +1175,24 @@
                     }
                 } else {
                     // 2回目以降のスナップショット（他端末からの同期）
+                    // 【重要】自分の書き込みのエコーは必ず無視する。
+                    // 以前は isLocalUpdate フラグ（書き込み後500msで解除）だけで判定していたため、
+                    // サーバーからの確認通知がフラグ解除より遅れて届くと「他端末からの更新」と誤認し、
+                    // 入力中に表全体が再描画されて選択セルが消える不具合があった。
+                    // → タイミングに依存しない2つの判定を追加：
+                    //    (1) hasPendingWrites＝送信中の自分の書き込み
+                    //    (2) lastWriterId＝最後に書き込んだ端末が自分
+                    if (snap.metadata && snap.metadata.hasPendingWrites) return;
                     if (snap.exists() && !isLocalUpdate) {
                         const data = snap.data();
+                        if (data.lastWriterId === clientId) return; // 自分の書き込みの確認通知 → 何もしない
+                        // ここから先は本当に「別の端末からの更新」
+                        // 再描画でフォーカスが消えないよう、入力中のセルを記憶しておく
+                        const ae = document.activeElement;
+                        let focusInfo = null;
+                        if (ae && ae.tagName === 'INPUT' && ae.dataset && Object.keys(ae.dataset).length > 0) {
+                            focusInfo = { cls: ae.className, ds: { ...ae.dataset } };
+                        }
                         cellDataStorage = data.cellDataStorage || {};
                         manualEditFlags = data.manualEditFlags || {};
                         criteriaSettings = data.criteriaSettings || criteriaSettings;
@@ -1189,6 +1207,19 @@
                         renderSubjectSettings(); renderTable(); renderShokenTabs();
                         const kt = document.getElementById('tab-kiroku');
                         if (kt && kt.classList.contains('active')) renderKirokuTable();
+                        // 入力中だったセルへフォーカスを戻す
+                        if (focusInfo) {
+                            const inputs = document.querySelectorAll('input');
+                            for (const el of inputs) {
+                                if (el.className !== focusInfo.cls) continue;
+                                const keysA = Object.keys(focusInfo.ds);
+                                const keysB = Object.keys(el.dataset);
+                                if (keysA.length !== keysB.length) continue;
+                                let match = true;
+                                for (const k of keysA) { if (el.dataset[k] !== focusInfo.ds[k]) { match = false; break; } }
+                                if (match) { el.focus({ preventScroll: true }); if (el.select) el.select(); break; }
+                            }
+                        }
                     }
                 }
             });
