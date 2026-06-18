@@ -2998,6 +2998,8 @@
                 autoSave();
             });
             inp.addEventListener('keydown', (e) => {
+                // 日本語入力（IME）の変換確定Returnでセル移動しないようにする
+                if (e.isComposing || e.keyCode === 229) return;
                 // 縦の移動順：タイトル → 配点設定 → 児童1〜40
                 const order = ['title', 'haiten'];
                 for (let n = 1; n <= studentCount; n++) order.push(String(n));
@@ -3164,6 +3166,8 @@
                 updateAverages(); autoSave();
             });
             input.addEventListener('keydown', (e) => {
+                // 日本語入力（IME）の変換確定Returnでセル移動しないようにする
+                if (e.isComposing || e.keyCode === 229) return;
                 if (input.tagName === 'SELECT') return;
                 const r = parseInt(input.dataset.row); const c = input.dataset.col;
                 let nr = r; let nc = c;
