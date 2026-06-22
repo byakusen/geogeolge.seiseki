@@ -586,6 +586,7 @@
             <div class="toolbar">
                 <button id="authBtn" class="btn btn-auth" onclick="toggleAuthModal()">🔑 ログイン</button>
                 <button class="btn btn-copy" onclick="copyTableData()">📋 スプレッドシート用にコピー</button>
+                <button id="syncBtn" class="btn btn-auth" onclick="manualSync()">☁️ 同期</button>
             </div>
         </div>
 
@@ -925,21 +926,49 @@
     }
 
     function autoSave() {
-        // localStorageへの保存は常に実行（ログイン状態に関係なく）
+        // 【手動同期方式】自動保存は端末内（localStorage）のみ。
+        // クラウドへの保存は「同期」ボタン（manualSync）を押したときだけ行う。
         saveToLocalStorage();
+    }
 
-        // Firestoreへの保存はログイン中かつ保存有効時のみ
-        if (!lastUser) return;
-        if (saveDisabled) return;
+    // クラウドへ書き込む共通処理（画面表示なし）。manualSync と起動時整合の両方から使う。
+    async function pushToCloud() {
+        if (!lastUser) return false;
+        if (saveDisabled) return false;
         isLocalUpdate = true;
-        clearTimeout(saveTimeout);
-        saveTimeout = setTimeout(async () => {
-            try {
-                const stateRef = doc(db, 'artifacts', appId, 'users', lastUser.uid);
-                await setDoc(stateRef, { cellDataStorage, manualEditFlags, criteriaSettings, startColIdx, term: termSelector.value, grade: gradeSelector.value, subjectSettings, updatedAt: new Date(), lastWriterId: clientId });
-                setTimeout(() => { isLocalUpdate = false; }, 500);
-            } catch (err) { isLocalUpdate = false; }
-        }, 1000);
+        try {
+            const stateRef = doc(db, 'artifacts', appId, 'users', lastUser.uid);
+            await setDoc(stateRef, { cellDataStorage, manualEditFlags, criteriaSettings, startColIdx, term: termSelector.value, grade: gradeSelector.value, subjectSettings, updatedAt: new Date(), lastWriterId: clientId });
+            setTimeout(() => { isLocalUpdate = false; }, 500);
+            return true;
+        } catch (err) {
+            isLocalUpdate = false;
+            throw err;
+        }
+    }
+
+    // 「同期」ボタン：今の画面のデータをクラウドに保存する（画面→クラウド）
+    async function manualSync() {
+        saveToLocalStorage(); // 念のため端末内にも保存
+        if (!lastUser || lastUser.isAnonymous) {
+            alert("クラウドに保存するにはログインが必要です。\n右上の「🔑 ログイン」からログインしてください。");
+            return;
+        }
+        if (saveDisabled) {
+            alert("いまクラウド保存が一時停止中です。\n一度ログインし直してから、もう一度「同期」を押してください。");
+            return;
+        }
+        const btn = document.getElementById('syncBtn');
+        const original = btn ? btn.textContent : null;
+        if (btn) { btn.disabled = true; btn.textContent = "⏳ 同期中…"; }
+        try {
+            await pushToCloud();
+            showStatus("クラウドに保存しました");
+        } catch (err) {
+            alert("クラウド保存に失敗しました。\n通信状況を確かめて、もう一度お試しください。\n\n（詳細：" + (err && err.message ? err.message : err) + "）");
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = original; }
+        }
     }
 
     function updateAverages() {
@@ -1104,9 +1133,10 @@
                             else {
                                 const loadCloud = confirm(
                                     "クラウドに保存されたデータがあります。\n\n" +
-                                    "OK・・・クラウドにあるデータが読み込まれます。\n" +
+                                    "OK・・・クラウドにあるデータを読み込みます。\n" +
                                     "（今、パソコンに映っているデータは消えます。）\n\n" +
-                                    "キャンセル・・・パソコンに映っている画面・データが、クラウド上のデータを上書きします。"
+                                    "キャンセル・・・今パソコンに映っている画面・データをそのまま使います。\n" +
+                                    "（クラウドへ保存するときは「☁️ 同期」ボタンを押してください。）"
                                 );
                                 if (loadCloud) {
                                     // OK → クラウドのデータを読み込む（画面のデータは消える）
@@ -1118,7 +1148,7 @@
                                     gradeSelector.value = data.grade || "1";
                                     subjectSettings = data.subjectSettings || subjectSettings;
                                 } else {
-                                    // キャンセル → 画面のデータでクラウドを上書きする
+                                    // キャンセル → 画面のデータをそのまま使う（端末内に保存のみ。クラウドへは同期ボタンで）
                                     cellDataStorage = prevData.cellDataStorage;
                                     manualEditFlags = prevData.manualEditFlags || {};
                                     criteriaSettings = prevData.criteriaSettings;
@@ -1174,53 +1204,11 @@
                         renderSubjectSettings(); renderTable(); renderShokenTabs();
                     }
                 } else {
-                    // 2回目以降のスナップショット（他端末からの同期）
-                    // 【重要】自分の書き込みのエコーは必ず無視する。
-                    // 以前は isLocalUpdate フラグ（書き込み後500msで解除）だけで判定していたため、
-                    // サーバーからの確認通知がフラグ解除より遅れて届くと「他端末からの更新」と誤認し、
-                    // 入力中に表全体が再描画されて選択セルが消える不具合があった。
-                    // → タイミングに依存しない2つの判定を追加：
-                    //    (1) hasPendingWrites＝送信中の自分の書き込み
-                    //    (2) lastWriterId＝最後に書き込んだ端末が自分
-                    if (snap.metadata && snap.metadata.hasPendingWrites) return;
-                    if (snap.exists() && !isLocalUpdate) {
-                        const data = snap.data();
-                        if (data.lastWriterId === clientId) return; // 自分の書き込みの確認通知 → 何もしない
-                        // ここから先は本当に「別の端末からの更新」
-                        // 再描画でフォーカスが消えないよう、入力中のセルを記憶しておく
-                        const ae = document.activeElement;
-                        let focusInfo = null;
-                        if (ae && ae.tagName === 'INPUT' && ae.dataset && Object.keys(ae.dataset).length > 0) {
-                            focusInfo = { cls: ae.className, ds: { ...ae.dataset } };
-                        }
-                        cellDataStorage = data.cellDataStorage || {};
-                        manualEditFlags = data.manualEditFlags || {};
-                        criteriaSettings = data.criteriaSettings || criteriaSettings;
-                        if (!criteriaSettings["要録"]) criteriaSettings["要録"] = {};
-                        startColIdx = data.startColIdx || 2;
-                        termSelector.value = data.term || "1学期";
-                        criteriaTermSelector.value = termSelector.value;
-                        recordTermSelector.value = termSelector.value;
-                        if(shokenTermSelector) shokenTermSelector.value = termSelector.value;
-                        gradeSelector.value = data.grade || "1";
-                        subjectSettings = data.subjectSettings || subjectSettings;
-                        renderSubjectSettings(); renderTable(); renderShokenTabs();
-                        const kt = document.getElementById('tab-kiroku');
-                        if (kt && kt.classList.contains('active')) renderKirokuTable();
-                        // 入力中だったセルへフォーカスを戻す
-                        if (focusInfo) {
-                            const inputs = document.querySelectorAll('input');
-                            for (const el of inputs) {
-                                if (el.className !== focusInfo.cls) continue;
-                                const keysA = Object.keys(focusInfo.ds);
-                                const keysB = Object.keys(el.dataset);
-                                if (keysA.length !== keysB.length) continue;
-                                let match = true;
-                                for (const k of keysA) { if (el.dataset[k] !== focusInfo.ds[k]) { match = false; break; } }
-                                if (match) { el.focus({ preventScroll: true }); if (el.select) el.select(); break; }
-                            }
-                        }
-                    }
+                    // 2回目以降のスナップショット（他端末がクラウドを更新したときに届く）。
+                    // 【手動同期方式】ここでは画面を一切作り替えない。
+                    // 入力中にクラウドから勝手に読み込まれて選択セルが消える問題を根本的に防ぐため、
+                    // 自動の読込（プル）は行わない。クラウドへの保存は「同期」ボタンで画面→クラウドの一方向のみ。
+                    return;
                 }
             });
             setupSwipeGestures();
@@ -3341,6 +3329,7 @@
     window.toggleYorokuGrades = toggleYorokuGrades;
     window.importStudentsFromPaste = importStudentsFromPaste;
     window.clearPasteArea = clearPasteArea;
+    window.manualSync = manualSync;
     window.onload = initTable;
 </script>
 
